@@ -40,11 +40,6 @@ typedef enum{
 	CNTState //error state 
 }state_s;
 
-typedef struct{
-	uint8_t hour;
-	uint8_t minute;
-	uint8_t second;
-}time_t;
 
 
 /* USER CODE END PTD */
@@ -72,7 +67,6 @@ __IO uint16_t memLocation = 0x000A;
 uint16_t EE_status;
 char lcd_buffer[6];    // LCD display buffer
 char timestring[10]={0};  
-char datestring[6]={0};
 
 state_s state;
 
@@ -80,8 +74,6 @@ state_s state;
 
 uint8_t wd, dd, mo, yy, ss, mm, hh; // for weekday, day, month, year, second, minute, hour
 uint8_t mem_offset_w, recent, recent2; //variables for reading and writing times to memory
-uint8_t param, modd;//variables to traverse date and time parameters and increment them appropriately
-uint8_t setting[]={12,60,60,100,12,31,7};//mods for date and time parameters
 uint8_t setData[]={0,0,0,0,0,0,0};//data for date and time
 
 const char* a[7][2]={"hh","mm","ss","yy","mo","dd", "wd"};
@@ -117,8 +109,8 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
-int sprintf(char *str, const char *format, ...);
-int snprintf(char *str, size_t size, const char *format, ...);
+
+int snprintf(char *str, size_t size, const char *format, ...); //used to convert integers to strings to be able to be displayed on LCD
 
 static void getCurrent(void);
 static void displayTime(void);
@@ -132,6 +124,7 @@ static void incrementSecond(void);
 static void incrementYear(void);
 static void incrementMonth(void);
 static void incrementDay(void);
+static void incrementWeekday(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -144,23 +137,29 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *RTCHandle){
 */
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) //used 
 {
 switch (GPIO_Pin) {
 	case GPIO_PIN_0:      //SELECT button  
+		if (state == timeState || state == purgatory || state == setState1 || state == setState2){
 		selpressed=1;		
+		}
 		break;    
-	case GPIO_PIN_1:     //left button   
+	case GPIO_PIN_1:     //left button  
+			if (state == timeState || state == purgatory || state == pastTimeState2 || state == setState1 || state == setState2){
 			leftpressed = 1;
+			}
 		break;
 	case GPIO_PIN_2:    //right button  
+			if (state == timeState || state == setState1 || state == setState2){
 			rightpressed = 1;
+			}
 		break;
 	case GPIO_PIN_3:    //up button 
-			uppressed = 1;
+			uppressed = 0;
 		break;
 	case GPIO_PIN_5:    //down button   
-			downpressed = 1;
+			downpressed = 0;
 		break;
 	default://
 		break;
@@ -296,12 +295,8 @@ int main(void)
 				snprintf(lcd_buffer,8,"%d %d %d",t1,t2,t3);
 				BSP_LCD_GLASS_Clear(); 
 				BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);	
-				//while (leftpressed == INACTIVE){
-					//if (leftpressed == ACTIVE){
-						HAL_Delay(1000);
-						state = pastTimeState2;
-					//}
-				//}
+				HAL_Delay(1000);
+				state = pastTimeState2;
 				break;
 			
 			case pastTimeState2:
@@ -399,12 +394,27 @@ int main(void)
 								incrementDay();
 							}else if (leftpressed == ACTIVE){
 								leftpressed = INACTIVE;
-								goto start1;
+								tempSet2 = 2;
 							}else {
 							goto back2;
 						}
 					goto start1;
+					} else if (tempSet2 == 2){
+						tempSet2 = 0;
+						leftpressed = INACTIVE;
+						back3:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"wd");	
+						if (selpressed == ACTIVE){
+							selpressed = INACTIVE;
+							incrementWeekday();
+						}else if (leftpressed == ACTIVE){
+							leftpressed = INACTIVE;
+							goto start1;
+						}else{
+							goto back3;
 					}
+				}
 				break;
 			
 			case storeState:
@@ -803,6 +813,29 @@ void incrementDay(){
 		}
 		else if (rightpressed == ACTIVE){
 			setData[5] = temp; //index of day
+			updateDataDate();
+			rightpressed = INACTIVE;
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementWeekday(){
+	uint8_t temp = RTC_DateStructure.WeekDay;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){ 
+			selpressed = INACTIVE;
+			temp = temp + 1;
+			if (temp == 8){ //max value for days
+				temp = 0;
+			}
+		}
+		else if (rightpressed == ACTIVE){
+			setData[6] = temp; //index of weekday
 			updateDataDate();
 			rightpressed = INACTIVE;
 			state = timeState;
