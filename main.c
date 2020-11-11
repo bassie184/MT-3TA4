@@ -84,7 +84,7 @@ uint8_t param, modd;//variables to traverse date and time parameters and increme
 uint8_t setting[]={12,60,60,100,12,31,7};//mods for date and time parameters
 uint8_t setData[]={0,0,0,0,0,0,0};//data for date and time
 
-char a[6][2]={"hh","mm","ss","yy","mo","dd"};
+const char* a[7][2]={"hh","mm","ss","yy","mo","dd", "wd"};
 
 /* Volatile Macro */
 
@@ -281,9 +281,9 @@ int main(void)
 					
 			case dateState:
 				getCurrent();
-				snprintf(lcd_buffer,8,"%d/%d/%d",mo,dd,yy);
+				snprintf(lcd_buffer,8,"%d %d %d %d",wd,mo,dd,yy);
 				BSP_LCD_GLASS_Clear();
-				BSP_LCD_GLASS_DisplayString((uint8_t*)lcd_buffer);
+				BSP_LCD_GLASS_ScrollSentence((uint8_t*) lcd_buffer, (uint16_t) 2, (uint16_t) 100);
 				HAL_Delay(1500);
 				state = timeState;
 				break;
@@ -381,17 +381,15 @@ int main(void)
 								incrementMonth();
 							}else if (leftpressed == ACTIVE){
 								leftpressed = INACTIVE;
-								//goto start2;
 								tempSet2 = 1;
 							}
 							else {
 								goto back1;
 							}
 						} 
-					else if (tempSet1 == 1){
+					else if (tempSet2 == 1){
 						tempSet2 = 0;
 						leftpressed = INACTIVE;
-					//	start2:
 						back2:
 						BSP_LCD_GLASS_Clear();
 			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"day");	
@@ -810,6 +808,7 @@ void getCurrent(){
 	yy=RTC_DateStructure.Year;
 	mo=RTC_DateStructure.Month;
 	dd=RTC_DateStructure.Date;
+	wd=RTC_DateStructure.WeekDay;
 }
 
 void displayTime(){
@@ -832,6 +831,7 @@ void updateDataDate(){
 	RTC_DateStructure.Year = setData[3];
 	RTC_DateStructure.Month = setData[4];
 	RTC_DateStructure.Date = setData[5];
+	RTC_DateStructure.WeekDay = setData[6];
 	HAL_RTC_SetDate(&RTCHandle,&RTC_DateStructure, RTC_FORMAT_BIN);
 }
 
