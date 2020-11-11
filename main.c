@@ -29,14 +29,15 @@
 /* USER CODE BEGIN PTD */
 
 typedef enum{
-	timeState,
-	dateState,
-	pastTimeState1,
-	pastTimeState2,
-	setState1,
-	setState2,
-	storeState,
-	CNTState
+	timeState, //display time
+	dateState, //display date then go back to time state
+	pastTimeState1, //get most recent time state
+	pastTimeState2, //get second most recent time state
+	purgatory, //middle state
+	setState1, //set time
+	setState2, //set date 
+	storeState, //select button -> stores time of press 
+	CNTState //error state 
 }state_s;
 
 typedef struct{
@@ -83,14 +84,9 @@ uint8_t param, modd;//variables to traverse date and time parameters and increme
 uint8_t setting[]={12,60,60,100,12,31,7};//mods for date and time parameters
 uint8_t setData[]={0,0,0,0,0,0,0};//data for date and time
 
-//char a[8]={"hh","mm","ss","yy","mo","dd","wd"};
+char a[6][2]={"hh","mm","ss","yy","mo","dd"};
 
-char yearStr[] = {"Yr"};
-char monStr[] = {"Mon"};
-char dayStr[] = {"Day"};
-char hrStr[] = {"hr"};
-char minStr[] = {"min"};
-char secStr[] = {"sec"};
+/* Volatile Macro */
 
 __IO uint32_t SEL_Pressed_StartTick;   //sysTick when the User button is pressed
 __IO uint8_t leftpressed, rightpressed, uppressed, downpressed, selpressed;  // button pressed 
@@ -110,6 +106,9 @@ uint8_t RTCFlag = ACTIVE;
 /* Temp */
 uint8_t t1,t2,t3;
 
+uint8_t tempSet1 = 0;
+uint8_t tempSet2 = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -124,6 +123,15 @@ int snprintf(char *str, size_t size, const char *format, ...);
 static void getCurrent(void);
 static void displayTime(void);
 static void write_offset (void);
+
+static void updateDataTime(void);
+static void updateDataDate(void);
+static void incrementHour(void);
+static void incrementMinute(void);
+static void incrementSecond(void);
+static void incrementYear(void);
+static void incrementMonth(void);
+static void incrementDay(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -139,16 +147,20 @@ void HAL_RTC_AlarmAEventCallback(RTC_HandleTypeDef *RTCHandle){
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 switch (GPIO_Pin) {
-	case GPIO_PIN_0:      //SELECT button                    
+	case GPIO_PIN_0:      //SELECT button  
+		selpressed=1;		
 		break;    
-
-	case GPIO_PIN_1:     //left button                        
+	case GPIO_PIN_1:     //left button   
+			leftpressed = 1;
 		break;
-	case GPIO_PIN_2:    //right button                        
+	case GPIO_PIN_2:    //right button  
+			rightpressed = 1;
 		break;
-	case GPIO_PIN_3:    //up button         
+	case GPIO_PIN_3:    //up button 
+			uppressed = 1;
 		break;
-	case GPIO_PIN_5:    //down button                        
+	case GPIO_PIN_5:    //down button   
+			downpressed = 1;
 		break;
 	default://
 		break;
@@ -180,6 +192,7 @@ int main(void)
   BSP_LCD_GLASS_Init();
 	BSP_JOY_Init(JOY_MODE_EXTI);
 	BSP_LED_Init(LED4);
+	BSP_LED_Init(LED5);
 	BSP_LCD_GLASS_DisplayString((uint8_t*)"LAB3");
 	HAL_Delay(1000);
   /* USER CODE END Init */
@@ -203,39 +216,72 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-		if (BSP_JOY_GetState() == JOY_SEL) {
-		SEL_Pressed_StartTick=HAL_GetTick(); 
-		while(BSP_JOY_GetState() == JOY_SEL) {  //while the selection button is pressed)	
-			if ((HAL_GetTick()-SEL_Pressed_StartTick)>750) {
-				if(state==timeState){
-				state=dateState;
+		
+			//to check if selection button is held 
+			if (BSP_JOY_GetState() == JOY_SEL) {
+				SEL_Pressed_StartTick=HAL_GetTick(); //gets time of holding
+					while(BSP_JOY_GetState() == JOY_SEL) {  //while the selection button is pressed)	
+						if ((HAL_GetTick()-SEL_Pressed_StartTick)>1000) {
+							//if(state==timeState){ //if so move from time state to the date display state
+							state=dateState;
+							//}
+						} 
+					}
 				}
-			} 
-		}
-	}
 			switch(state){
 				
 			case timeState:
 				if (RTCFlag == ACTIVE){
 					if (HAL_RTC_GetTime(&RTCHandle, &RTC_TimeStructure, RTC_FORMAT_BCD) == HAL_OK){
-						BSP_LED_Toggle(LED5);
+						BSP_LED_Toggle(LED4);
 						displayTime();
 					}
+				HAL_RTC_GetDate(&RTCHandle, &RTC_DateStructure, RTC_FORMAT_BCD);
 				RTCFlag = INACTIVE;
 				}
-				if (selpressed == 1){
+				if (selpressed == ACTIVE){
 					selpressed = INACTIVE;
-					getCurrent();
-				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w, hh);
-				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w+1, mm);
-				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w+2, ss);
-				write_offset();
+					state = storeState;
 				}
+				if (leftpressed == ACTIVE){
+					leftpressed = INACTIVE;
+					state = pastTimeState1;
+				}
+				if (rightpressed == ACTIVE){
+					rightpressed = INACTIVE;
+					state = purgatory;
+					}
 				break;
-				
+			
+			case purgatory:
+				start:
+				BSP_LCD_GLASS_Clear();
+				BSP_LCD_GLASS_DisplayString((uint8_t*)"Time");
+					if (selpressed == ACTIVE){
+						selpressed = INACTIVE;
+						state = setState1;
+					}
+					else if (leftpressed == ACTIVE){
+						leftpressed = INACTIVE;
+						back:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"DATE");	
+							if (selpressed == ACTIVE){
+								selpressed = INACTIVE;
+								state = setState2;
+							}else if (leftpressed == ACTIVE){
+								leftpressed = INACTIVE;
+								goto start;
+							}
+							else {
+								goto back;
+							}
+						} 
+				break;	
+					
 			case dateState:
 				getCurrent();
-				snprintf(lcd_buffer,8,"%d%d%d",dd,mo,yy);
+				snprintf(lcd_buffer,8,"%d/%d/%d",mo,dd,yy);
 				BSP_LCD_GLASS_Clear();
 				BSP_LCD_GLASS_DisplayString((uint8_t*)lcd_buffer);
 				HAL_Delay(1500);
@@ -243,12 +289,18 @@ int main(void)
 				break;
 			
 			case pastTimeState1:
-				t1=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent);
-				t2=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent+1);
-				t3=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent+2);
-				snprintf(lcd_buffer,8,"%d%d%d",t1,t2,t3);
+				t1=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent); //hour
+				t2=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent+1); //minute 
+				t3=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent+2); //second
+				snprintf(lcd_buffer,8,"%d %d %d",t1,t2,t3);
 				BSP_LCD_GLASS_Clear(); 
-				BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);			
+				BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);	
+				//while (leftpressed == INACTIVE){
+					//if (leftpressed == ACTIVE){
+						HAL_Delay(1000);
+						state = pastTimeState2;
+					//}
+				//}
 				break;
 			
 			case pastTimeState2:
@@ -256,18 +308,113 @@ int main(void)
 				t1=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent2);
 				t2=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent2+1);
 				t3=I2C_ByteRead(&pI2c_Handle,EEPROM_ADDRESS, memLocation+recent2+2);
-				snprintf(lcd_buffer,8,"%d%d%d",t1,t2,t3);
+				snprintf(lcd_buffer,8,"%d %d %d",t1,t2,t3);
 				BSP_LCD_GLASS_Clear(); 
 				BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
-				break;
+			  while(1){
+				if (leftpressed == ACTIVE){
+					  leftpressed = INACTIVE;
+						state = timeState;
+						break;
+				 }
+			 }
 			
 			case setState1:
+			  start13:
+				BSP_LCD_GLASS_Clear();
+				BSP_LCD_GLASS_DisplayString((uint8_t*)"hh");
+					if (selpressed == ACTIVE){
+						selpressed = INACTIVE;
+						incrementHour();
+					}
+					else if (leftpressed == ACTIVE){
+						leftpressed = INACTIVE;
+						back13:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"min");	
+							if (selpressed == ACTIVE){
+								selpressed = INACTIVE;
+								incrementMinute();
+							}else if (leftpressed == ACTIVE){
+								leftpressed = INACTIVE;
+								tempSet1 = 1;
+							}
+							else {
+								goto back13;
+							}
+						} 
+					else if (tempSet1 == 1){
+						tempSet1 = 0;
+						leftpressed = INACTIVE;
+					//	start2:
+						back21:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"sec");	
+							if (selpressed == ACTIVE){
+								selpressed = INACTIVE;
+								incrementSecond();
+							}else if (leftpressed == ACTIVE){
+								leftpressed = INACTIVE;
+								goto start13;
+							}else {
+							goto back21;
+						}
+					goto start13;
+					}
 				break;
 			
 			case setState2:
+				start1:
+				BSP_LCD_GLASS_Clear();
+				BSP_LCD_GLASS_DisplayString((uint8_t*)"yy");
+					if (selpressed == ACTIVE){
+						selpressed = INACTIVE;
+						incrementYear();
+					}
+					else if (leftpressed == ACTIVE){
+						leftpressed = INACTIVE;
+						back1:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"mon");	
+							if (selpressed == ACTIVE){
+								selpressed = INACTIVE;
+								incrementMonth();
+							}else if (leftpressed == ACTIVE){
+								leftpressed = INACTIVE;
+								//goto start2;
+								tempSet2 = 1;
+							}
+							else {
+								goto back1;
+							}
+						} 
+					else if (tempSet1 == 1){
+						tempSet2 = 0;
+						leftpressed = INACTIVE;
+					//	start2:
+						back2:
+						BSP_LCD_GLASS_Clear();
+			    	BSP_LCD_GLASS_DisplayString((uint8_t*)"day");	
+							if (selpressed == ACTIVE){
+								selpressed = INACTIVE;
+								incrementDay();
+							}else if (leftpressed == ACTIVE){
+								leftpressed = INACTIVE;
+								goto start1;
+							}else {
+							goto back2;
+						}
+					goto start1;
+					}
 				break;
 			
 			case storeState:
+				getCurrent();
+				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w, hh);
+				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w+1, mm);
+				EE_status=I2C_ByteWrite(&pI2c_Handle,EEPROM_ADDRESS, memLocation+mem_offset_w+2, ss);
+				write_offset();
+				state = timeState;
 				break;
 			
 			case CNTState:
@@ -427,8 +574,8 @@ static void MX_RTC_Init(void)
     Error_Handler();
   }
   sDate.WeekDay = RTC_WEEKDAY_WEDNESDAY;
-  sDate.Month = RTC_MONTH_JANUARY;
-  sDate.Date = 0x1;
+  sDate.Month = RTC_MONTH_APRIL;
+  sDate.Date = 0x5;
   sDate.Year = 0x20;
 
   if (HAL_RTC_SetDate(&RTCHandle, &sDate, RTC_FORMAT_BCD) != HAL_OK)
@@ -511,7 +658,6 @@ void getData(void){
 	setData[3]=yy;
 	setData[4]=mo;
 	setData[5]=dd;
-	setData[6]=wd;
 }
 
 void write_offset(void){
@@ -528,7 +674,133 @@ void write_offset(void){
 	}
 }
 
-void getCurrent(void){
+void incrementHour (){
+	uint8_t temp = RTC_TimeStructure.Hours;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			rightpressed = INACTIVE;
+			temp = temp % 24; //max value for hours
+			setData[0] = temp; //index for hours
+			updateDataTime();
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementMinute (){
+	uint8_t temp = RTC_TimeStructure.Minutes;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			rightpressed = INACTIVE;
+			temp = temp % 60; //max value for minute
+			setData[1] = temp; //index of minute 
+			updateDataTime(); 
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementSecond(){
+	uint8_t temp = RTC_TimeStructure.Seconds;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			temp = temp % 60; //max valye for a second
+			setData[2] = temp; //index for minute 
+			updateDataTime();
+			rightpressed = INACTIVE;
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementYear(){
+	uint8_t temp = RTC_DateStructure.Year;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			temp = temp % 99; //max value for years
+			setData[3] = temp; //index for years
+			updateDataDate();
+			rightpressed= INACTIVE;
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementMonth(){
+	uint8_t temp = RTC_DateStructure.Month;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			temp = temp % 12; //max value of month
+			setData[4] = temp; //4 is index of month
+			updateDataDate();
+			rightpressed = INACTIVE;
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void incrementDay(){
+	uint8_t temp = RTC_DateStructure.Date;	
+	while (1){
+		snprintf(lcd_buffer,8,"%d",temp);
+		BSP_LCD_GLASS_Clear(); 
+	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+		if (selpressed == ACTIVE){
+			selpressed = INACTIVE;
+		temp = temp + 1;
+		}
+		else if (rightpressed == ACTIVE){
+			temp = temp % 31;  //max value of day
+			setData[5] = temp; //index of day
+			updateDataDate();
+			rightpressed = INACTIVE;
+			state = timeState;
+			break;
+		}
+	}
+}
+
+void getCurrent(){
 	//updates current time and date and stores data in respective variables
 	HAL_RTC_GetTime(&RTCHandle,&RTC_TimeStructure, RTC_FORMAT_BIN);
 	HAL_RTC_GetDate(&RTCHandle,&RTC_DateStructure, RTC_FORMAT_BIN);
@@ -543,30 +815,24 @@ void getCurrent(void){
 void displayTime(){
 	getCurrent();
 	//updates time and date data then shows time on screen
-	snprintf(timestring,8,"%d%d%d",hh,mm,ss);
+	snprintf(timestring,8,"%d %d %d",hh,mm,ss);
 	BSP_LCD_GLASS_Clear(); 
 	BSP_LCD_GLASS_DisplayString((uint8_t*) timestring);
 }
 
-void updateData(){
+void updateDataTime(){
 	// updates date and time settings from copy of variables that user to modified 
+	RTC_TimeStructure.Hours = setData[0];  
+	RTC_TimeStructure.Minutes = setData[1]; 
+	RTC_TimeStructure.Seconds = setData[2];
+	HAL_RTC_SetTime(&RTCHandle,&RTC_TimeStructure, RTC_FORMAT_BIN);
+}
+
+void updateDataDate(){
 	RTC_DateStructure.Year = setData[3];
 	RTC_DateStructure.Month = setData[4];
 	RTC_DateStructure.Date = setData[5];
-	RTC_DateStructure.WeekDay = setData[6];
-	
-	RTC_TimeStructure.Hours = setData[0];  
-
-	RTC_TimeStructure.Minutes = setData[1]; 
-
-	RTC_TimeStructure.Seconds = setData[2];
-
-		HAL_RTC_SetTime(&RTCHandle,&RTC_TimeStructure, RTC_FORMAT_BIN);
-
 	HAL_RTC_SetDate(&RTCHandle,&RTC_DateStructure, RTC_FORMAT_BIN);
-
-	
-
 }
 
 /* USER CODE END 4 */
@@ -580,6 +846,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   BSP_LED_On(LED4);
+	BSP_LED_On(LED5);
   /* USER CODE END Error_Handler_Debug */
 }
 
