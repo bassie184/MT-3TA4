@@ -281,9 +281,10 @@ int main(void)
 					
 			case dateState:
 				getCurrent();
-				snprintf(lcd_buffer,8,"%d %d %d %d",wd,mo,dd,yy);
+				snprintf(lcd_buffer,8,"%d%d%d%d",wd,mo,dd,yy);
 				BSP_LCD_GLASS_Clear();
-				BSP_LCD_GLASS_ScrollSentence((uint8_t*) lcd_buffer, (uint16_t) 2, (uint16_t) 100);
+			  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
+				//BSP_LCD_GLASS_ScrollSentence((uint8_t*) lcd_buffer, (uint8_t) 2, (uint16_t) 300);
 				HAL_Delay(1500);
 				state = timeState;
 				break;
@@ -680,11 +681,13 @@ void incrementHour (){
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
 		if (selpressed == ACTIVE){
 			selpressed = INACTIVE;
-		temp = temp + 1;
+			temp = temp + 1;
+			if (temp == 25){ //max value for hours
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
 			rightpressed = INACTIVE;
-			temp = temp % 24; //max value for hours
 			setData[0] = temp; //index for hours
 			updateDataTime();
 			state = timeState;
@@ -701,11 +704,13 @@ void incrementMinute (){
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
 		if (selpressed == ACTIVE){
 			selpressed = INACTIVE;
-		temp = temp + 1;
+			temp = temp + 1;
+			if (temp == 60){ //max value for minutes
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
 			rightpressed = INACTIVE;
-			temp = temp % 60; //max value for minute
 			setData[1] = temp; //index of minute 
 			updateDataTime(); 
 			state = timeState;
@@ -722,10 +727,12 @@ void incrementSecond(){
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
 		if (selpressed == ACTIVE){
 			selpressed = INACTIVE;
-		temp = temp + 1;
+			temp = temp + 1;
+			if (temp == 60){ //max value for seconds
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
-			temp = temp % 60; //max valye for a second
 			setData[2] = temp; //index for minute 
 			updateDataTime();
 			rightpressed = INACTIVE;
@@ -743,10 +750,12 @@ void incrementYear(){
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
 		if (selpressed == ACTIVE){
 			selpressed = INACTIVE;
-		temp = temp + 1;
+	  	temp = temp + 1;
+			if (temp == 100){ //max value for years
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
-			temp = temp % 99; //max value for years
 			setData[3] = temp; //index for years
 			updateDataDate();
 			rightpressed= INACTIVE;
@@ -764,10 +773,12 @@ void incrementMonth(){
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
 		if (selpressed == ACTIVE){
 			selpressed = INACTIVE;
-		temp = temp + 1;
+			temp = temp + 1;
+			if (temp == 13){ //max value for months
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
-			temp = temp % 12; //max value of month
 			setData[4] = temp; //4 is index of month
 			updateDataDate();
 			rightpressed = INACTIVE;
@@ -783,12 +794,14 @@ void incrementDay(){
 		snprintf(lcd_buffer,8,"%d",temp);
 		BSP_LCD_GLASS_Clear(); 
 	  BSP_LCD_GLASS_DisplayString((uint8_t*) lcd_buffer);
-		if (selpressed == ACTIVE){
+		if (selpressed == ACTIVE){ 
 			selpressed = INACTIVE;
-		temp = temp + 1;
+			temp = temp + 1;
+			if (temp == 32){ //max value for days
+				temp = 0;
+			}
 		}
 		else if (rightpressed == ACTIVE){
-			temp = temp % 31;  //max value of day
 			setData[5] = temp; //index of day
 			updateDataDate();
 			rightpressed = INACTIVE;
